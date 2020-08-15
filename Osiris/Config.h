@@ -9,6 +9,8 @@
 #include "nSkinz/config_.hpp"
 #include "ConfigStructs.h"
 
+#include "SDK/Vector.h"
+
 class Config {
 public:
     explicit Config(const char*) noexcept;
@@ -59,6 +61,45 @@ public:
         bool betweenShots{ true };
     };
     std::array<Aimbot, 40> aimbot;
+
+	struct Ragebot {
+		bool enabled{ false };
+		bool onKey{ false };
+		int key{ 0 };
+		int keyMode{ 0 };
+		bool slient{ false };
+		bool betweenShots{ false };
+		bool friendlyFire{ false };
+		bool autoStop{ false };
+		float bodyChance{ 0.0f };
+		float pointChance{ 0.0f };
+		float CanSeeDamage{ 0.0f };
+        float WallDamage{ 0.0f };
+		float hitChance{ 0.0f };
+		bool BonesBools[8]{
+			false,
+			false,
+			false,
+			false,
+			false,
+			false,
+			false,
+			false
+		};
+	};
+	std::array<Ragebot, 45> ragebot;
+
+	const char* BonesTexts[8] = 
+	{
+			"Head",
+			"Neck",
+			"UpperChest",
+			"Body",
+			"Pelvis",
+			"Hands",
+			"Legs",
+			"FeetS"
+	};
 
     struct Triggerbot {
         bool enabled = false;
@@ -167,6 +208,7 @@ public:
         float hitMarkerTime{ 0.6f };
         int playerModelT{ 0 };
         int playerModelCT{ 0 };
+        bool nightMode{ false };
 
         struct ColorCorrection {
             bool enabled = false;
@@ -224,7 +266,7 @@ public:
         bool revealRanks{ false };
         bool revealMoney{ false };
         bool revealSuspect{ false };
-        ColorToggle spectatorList;
+        ImGuiStruct spectatorList{ false };
         ColorToggle watermark;
         bool fixAnimationLOD{ false };
         bool fixBoneMatrix{ false };
@@ -251,9 +293,12 @@ public:
         float maxAngleDelta{ 255.0f };
         bool fakePrime{ false };
         int killSound{ 0 };
+        bool drawInaccuracy{ false };
+        float drawInaccuracyThickness{ 0.0f };
         std::string customKillSound;
         std::string customHitSound;
         PurchaseList purchaseList;
+        StatusBar Sbar;
     } misc;
 
     struct Reportbot {
@@ -267,6 +312,11 @@ public:
         int delay{ 1 };
         int rounds{ 1 };
     } reportbot;
+
+    struct{
+        Vector viewangles;
+
+    }globalvars;
 
     void scheduleFontLoad(const std::string& name) noexcept;
     bool loadScheduledFonts() noexcept;

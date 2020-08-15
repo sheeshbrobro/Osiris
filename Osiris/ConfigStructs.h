@@ -126,3 +126,19 @@ struct PurchaseList {
     };
     int mode = Details;
 };
+
+struct ImGuiStruct
+{
+    bool enabled{ false };
+    bool noBackGround{ false };
+    bool noTittleBar{ false };
+    
+};
+
+struct StatusBar : ImGuiStruct
+{
+	bool ShowPlayerRealViewAngles{ false };
+	bool ShowPlayerStatus{ false };
+	bool ShowGameGlobalVars{ false };
+
+};

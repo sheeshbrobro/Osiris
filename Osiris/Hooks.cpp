@@ -19,6 +19,7 @@
 #include "Memory.h"
 
 #include "Hacks/Aimbot.h"
+#include "Hacks/Ragebot.h"
 #include "Hacks/AntiAim.h"
 #include "Hacks/Backtrack.h"
 #include "Hacks/Chams.h"
@@ -97,6 +98,9 @@ static HRESULT __stdcall present(IDirect3DDevice9* device, const RECT* src, cons
 
     StreamProofESP::render();
     Misc::purchaseList();
+    Misc::spectatorList();
+    Misc::StatusBar();
+    Misc::DrawInaccuracy(ImGui::GetBackgroundDrawList());
     Misc::noscopeCrosshair(ImGui::GetBackgroundDrawList());
     Misc::recoilCrosshair(ImGui::GetBackgroundDrawList());
 
@@ -157,6 +161,7 @@ static bool __stdcall createMove(float inputSampleTime, UserCmd* cmd) noexcept
     EnginePrediction::run(cmd);
 
     Aimbot::run(cmd);
+    Ragebot::run(cmd);
     Triggerbot::run(cmd);
     Backtrack::run(cmd);
     Misc::edgejump(cmd);
@@ -185,6 +190,10 @@ static bool __stdcall createMove(float inputSampleTime, UserCmd* cmd) noexcept
     cmd->sidemove = std::clamp(cmd->sidemove, -450.0f, 450.0f);
 
     previousViewAngles = cmd->viewangles;
+
+
+    if (sendPacket) //because of sendpacket == true --- return real angles
+        config->globalvars.viewangles = cmd->viewangles;
 
     return false;
 }
@@ -239,7 +248,6 @@ static void __stdcall paintTraverse(unsigned int panel, bool forceRepaint, bool 
 {
     if (interfaces->panel->getName(panel) == "MatSystemTopPanel") {
         Misc::drawBombTimer();
-        Misc::spectatorList();
         Misc::watermark();
         Visuals::hitMarker();
     }
@@ -260,6 +268,7 @@ static void __stdcall frameStageNotify(FrameStage stage) noexcept
         Misc::disablePanoramablur();
         Visuals::colorWorld();
         Misc::fakePrime();
+        Visuals::NightMode();
     }
     if (interfaces->engine->isInGame()) {
         Visuals::skybox(stage);

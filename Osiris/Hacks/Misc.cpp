@@ -123,53 +123,39 @@ void Misc::updateClanTag(bool tagChanged) noexcept
 
 void Misc::spectatorList() noexcept
 {
-    auto& cfg = config->misc.spectatorList;
-    if (cfg.enabled) {
-        std::string name;
-        ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoCollapse;
-        if (!gui->open)
-            windowFlags |= ImGuiWindowFlags_NoInputs;
-        if(cfg.noBackGround)
-            windowFlags |= ImGuiWindowFlags_NoBackground;
-        if (cfg.noTittleBar)
-            windowFlags |= ImGuiWindowFlags_NoTitleBar;
-        if (!localPlayer && !gui->open)
-            return;
+    if (!config->misc.spectatorList.enabled)
+        return;
 
-        const auto size = ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, NULL, name.c_str());
-        ImGui::SetNextWindowSize(ImVec2(300.0f, size.y + ImGui::GetFontSize() * 3.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowTitleAlign, { 0.5f, 0.5f });
-        ImGui::Begin("Spectator List", nullptr, windowFlags);
-        ImGui::PopStyleVar();
-        if (!localPlayer || !localPlayer->isAlive())
-            return;
+    if (!localPlayer || !localPlayer->isAlive())
+        return;
 
-            /*if (!localPlayer->isAlive())      Make Player can see who are watching your friends 
-            {                                           but sometime crash . I need some one he
-                if (!localPlayer->getObserverTarget())
-                    return;
-                auto a = localPlayer.get();
-                a = localPlayer->getObserverTarget();
-            }*/
+    interfaces->surface->setTextFont(Surface::font);
 
-		for (int i = 1; i <= interfaces->engine->getMaxClients(); ++i) {
-			const auto entity = interfaces->entityList->getEntity(i);
-			if (!entity || entity->isDormant() || entity->isAlive() || entity->getObserverTarget() != localPlayer.get())
-				continue;
+    if (config->misc.spectatorList.rainbow)
+        interfaces->surface->setTextColor(rainbowColor(config->misc.spectatorList.rainbowSpeed));
+    else
+        interfaces->surface->setTextColor(config->misc.spectatorList.color);
 
-			PlayerInfo playerInfo;
-			if (!interfaces->engine->getPlayerInfo(i, playerInfo))
-				continue;
+    const auto [width, height] = interfaces->surface->getScreenSize();
 
-			name += std::string(playerInfo.name) + "\n";
-		}
-        
+    auto textPositionY = static_cast<int>(0.5f * height);
 
-        ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y * 3 + ImGui::GetFontSize()));
-        ImGui::Text(name.c_str());
+    for (int i = 1; i <= interfaces->engine->getMaxClients(); ++i) {
+        const auto entity = interfaces->entityList->getEntity(i);
+        if (!entity || entity->isDormant() || entity->isAlive() || entity->getObserverTarget() != localPlayer.get())
+            continue;
 
+        PlayerInfo playerInfo;
 
-        ImGui::End();
+        if (!interfaces->engine->getPlayerInfo(i, playerInfo))
+            continue;
+
+        if (wchar_t name[128]; MultiByteToWideChar(CP_UTF8, 0, playerInfo.name, -1, name, 128)) {
+            const auto [textWidth, textHeight] = interfaces->surface->getTextSize(Surface::font, name);
+            interfaces->surface->setTextPosition(width - textWidth - 5, textPositionY);
+            textPositionY -= textHeight;
+            interfaces->surface->printText(name);
+        }
     }
 }
 
@@ -821,89 +807,28 @@ void Misc::purchaseList(GameEvent* event) noexcept
     }
 }
 
-void Misc::StatusBar()noexcept
+void Misc::oppositeHandKnife(FrameStage stage) noexcept
 {
-    auto & cfg = config->misc.Sbar;
-    if (cfg.enabled == false)
+    if (!config->misc.oppositeHandKnife)
         return;
 
-    ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoCollapse;
-    
-    if (cfg.noTittleBar)
-        windowFlags |= ImGuiWindowFlags_NoTitleBar;
-
-    if (cfg.noBackGround)
-        windowFlags |= ImGuiWindowFlags_NoBackground;
-    if (!localPlayer && !gui->open)
+    if (!localPlayer)
         return;
 
-    ImGui::SetNextWindowSize(ImVec2(200.0f, 200.0f), ImGuiCond_Once);
-    ImGui::Begin("Status Bar",nullptr,windowFlags);
-    if (localPlayer && localPlayer->isAlive()) {
-        if (cfg.ShowPlayerRealViewAngles) {
-            ImGui::Text("Pitch: %.1f", config->globalvars.viewangles.x);
-            ImGui::Text("Yaw: %.1f", config->globalvars.viewangles.y);
+    if (stage != FrameStage::RENDER_START && stage != FrameStage::RENDER_END)
+        return;
+
+    static const auto cl_righthand = interfaces->cvar->findVar("cl_righthand");
+    static bool original;
+
+    if (stage == FrameStage::RENDER_START) {
+        original = cl_righthand->getInt();
+
+        if (const auto activeWeapon = localPlayer->getActiveWeapon()) {
+            if (const auto classId = activeWeapon->getClientClass()->classId; classId == ClassId::Knife || classId == ClassId::KnifeGG)
+                cl_righthand->setValue(!original);
         }
-
-        if (cfg.ShowPlayerStatus)
-        {
-            std::string message = "LocalPlayer: ";
-            auto local = GameData::local();
-
-			if (localPlayer->flags() & PlayerFlags::ONGROUND)
-				message += "OnGound;\n";
-			if (!(localPlayer->flags() & PlayerFlags::ONGROUND))
-				message += "InAir;\n";
-			if (localPlayer->flags() & PlayerFlags::DUCKING)
-				message += "Ducking;\n";
-			if (localPlayer->flags() & PlayerFlags::GODMODE)
-				message += "Cheater Mode On;\n";
-			if (localPlayer->flags() & PlayerFlags::ONFIRE)
-				message += "OnFire;\n";
-			if (localPlayer->flags() & PlayerFlags::SWIM)
-				message += "Swimming;\n";
-			if (localPlayer->isDefusing())
-				message += "Defusing;\n";
-			if (localPlayer->isFlashed())
-				message += "Flashed~;\n";
-			if (localPlayer->inBombZone())
-				message += "in BombZone~\n";
-			if (local.shooting)
-				message += "Shooting...\n";
-
-            if(!cfg.noBackGround) //if no background draw a line will make GUI now good
-           ImGui::Separator();//Draw A line
-           ImGui::Text(message.c_str());
-
-        }
-
-        if (cfg.ShowGameGlobalVars) {
-            ImGui::Text("CurTime: %.1f",memory->globalVars->currenttime);
-            ImGui::Text("RealTime: %.1f",memory->globalVars->realtime);
-        }
+    } else {
+        cl_righthand->setValue(original);
     }
-    ImGui::End();
-}
-
-void Misc::DrawInaccuracy(ImDrawList* draw)noexcept
-{
-    const auto [w, h] = interfaces->surface->getScreenSize();
-
-    if (!config->misc.drawInaccuracy)
-        return;
-
-    if (!localPlayer || !localPlayer->isAlive())
-        return;
-
-    const auto Acweapon = localPlayer->getActiveWeapon();
-    if (!Acweapon || Acweapon->isNade() || Acweapon->isKnife())
-		return;
-
-	const float Inaccuracy = Acweapon->getInaccuracy() * 500.0f;
-	if (Inaccuracy <= 0.0f)
-		return;
-
-    //TODO: Add Slider in GUI.CPP to change color
-	draw->AddCircle(ImVec2(static_cast<float>(w) / 2.0f, static_cast<float>(h) / 2.0f), Inaccuracy,
-	/* Red */ImGui::GetColorU32(ImVec4(1.000f, 0.000f, 0.000f, 1.000f)), config->misc.drawInaccuracyThickness);
 }

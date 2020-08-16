@@ -1,5 +1,8 @@
 #include <fstream>
+
+#ifdef _WIN32
 #include <ShlObj.h>
+#endif
 
 #include "nlohmann/json.hpp"
 
@@ -39,21 +42,26 @@ int CALLBACK fontCallback(const LOGFONTA* lpelfe, const TEXTMETRICA*, DWORD, LPA
 
 Config::Config(const char* name) noexcept
 {
+#ifdef _WIN32
     if (PWSTR pathToDocuments; SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &pathToDocuments))) {
         path = pathToDocuments;
         path /= name;
         CoTaskMemFree(pathToDocuments);
     }
+#endif
 
     listConfigs();
     misc.clanTag[0] = '\0';
 
+#ifdef _WIN32
     LOGFONTA logfont;
     logfont.lfCharSet = ANSI_CHARSET;
     logfont.lfPitchAndFamily = DEFAULT_PITCH;
     logfont.lfFaceName[0] = '\0';
 
     EnumFontFamiliesExA(GetDC(nullptr), &logfont, fontCallback, (LPARAM)&systemFonts, 0);
+#endif
+
     std::sort(std::next(systemFonts.begin()), systemFonts.end());
 }
 
@@ -266,21 +274,6 @@ static void from_json(const json& j, Player& p)
     read<value_t::object>(j, "Head Box", p.headBox);
 }
 
-static void from_json(const json& j, ImGuiStruct& i)
-{
-    read(j, "Enabled", i.enabled);
-    read(j, "No BackGround",i.noBackGround);
-    read(j, "No TittleBar",i.noTittleBar);
-}
-
-static void from_json(const json& j, StatusBar& s)
-{
-	from_json(j, static_cast<ImGuiStruct&>(s));
-    read(j, "Show Player Real ViewAngles", s.ShowPlayerRealViewAngles);
-    read(j, "Show Player Status", s.ShowPlayerStatus);
-    read(j, "Show GameGlobalVars", s.ShowGameGlobalVars);
-}
-
 static void from_json(const json& j, ImVec2& v)
 {
     read(j, "X", v.x);
@@ -310,30 +303,6 @@ static void from_json(const json& j, Config::Aimbot& a)
     read(j, "Min damage", a.minDamage);
     read(j, "Killshot", a.killshot);
     read(j, "Between shots", a.betweenShots);
-}
-
-static void from_json(const json& j, Config::Ragebot& r)
-{
-	read(j, "Enabled", r.enabled);
-	read(j, "On key", r.onKey);
-	read(j, "Key", r.key);
-	read(j, "Key mode", r.keyMode);
-	read(j, "Silent", r.slient);
-	read(j, "Friendly fire", r.friendlyFire);
-	read(j, "Min damage", r.WallDamage);
-	read(j, "Hit Chance", r.hitChance);
-	read(j, "Auto Stop", r.autoStop);
-	read(j, "Head", r.BonesBools[0]);
-	read(j, "Neck", r.BonesBools[1]);
-	read(j, "Upper Chest", r.BonesBools[2]);
-	read(j, "Body", r.BonesBools[3]);
-	read(j, "Pelvis", r.BonesBools[4]);
-	read(j, "Hands", r.BonesBools[5]);
-	read(j, "Thigh & Calf", r.BonesBools[6]);
-	read(j, "Feet", r.BonesBools[7]);
-	read(j, "Between shots", r.betweenShots);
-	read(j, "Point Chance", r.pointChance);
-	read(j, "Body Chance", r.bodyChance);
 }
 
 static void from_json(const json& j, Config::Triggerbot& t)
@@ -456,7 +425,6 @@ static void from_json(const json& j, Config::Visuals& v)
     read(j, "Hit marker time", v.hitMarkerTime);
     read(j, "Playermodel T", v.playerModelT);
     read(j, "Playermodel CT", v.playerModelCT);
-    read(j, "Night Mode", v.nightMode);
     read<value_t::object>(j, "Color correction", v.colorCorrection);
 }
 
@@ -596,9 +564,7 @@ static void from_json(const json& j, Config::Misc& m)
     read(j, "Kill sound", m.killSound);
     read<value_t::object>(j, "Custom Kill Sound", m.customKillSound);
     read<value_t::object>(j, "Purchase List", m.purchaseList);
-    read(j, "Draw Inaccuracy", m.drawInaccuracy);
-    read(j, "Draw Inaccuracy Thickness", m.drawInaccuracyThickness);
-    read<value_t::object>(j, "Status Bar", m.Sbar);
+    read(j, "Opposite Hand Knife", m.oppositeHandKnife);
 }
 
 static void from_json(const json& j, Config::Reportbot& r)
@@ -627,7 +593,6 @@ void Config::load(size_t id, bool incremental) noexcept
         reset();
 
     read(j, "Aimbot", aimbot);
-    read(j, "Ragebot", ragebot);
     read(j, "Triggerbot", triggerbot);
     read<value_t::object>(j, "Backtrack", backtrack);
     read<value_t::object>(j, "Anti aim", antiAim);
@@ -767,21 +732,6 @@ static void to_json(json& j, const Projectile& o, const Projectile& dummy = {})
     WRITE("Trails", trails);
 }
 
-static void to_json(json& j, const ImGuiStruct& o, const ImGuiStruct& dummy = {})
-{
-	WRITE("Enabled", enabled);
-	WRITE("No BackGround", noBackGround);
-	WRITE("No TittleBar", noTittleBar);
-}
-
-static void to_json(json& j, const StatusBar& o, const StatusBar& dummy = {})
-{
-    to_json(j, static_cast<const ImGuiStruct&>(o), dummy);
-    WRITE("Show Player Real ViewAngles", ShowPlayerRealViewAngles);
-    WRITE("Show Player Status", ShowPlayerStatus);
-    WRITE("Show GameGlobalVars", ShowGameGlobalVars);
-}
-
 static void to_json(json& j, const ImVec2& o, const ImVec2& dummy = {})
 {
     WRITE("X", x);
@@ -811,30 +761,6 @@ static void to_json(json& j, const Config::Aimbot& o, const Config::Aimbot& dumm
     WRITE("Min damage", minDamage);
     WRITE("Killshot", killshot);
     WRITE("Between shots", betweenShots);
-}
-
-static void to_json(json& j, const Config::Ragebot& o, const Config::Ragebot& dummy = {})
-{
-	WRITE("Enabled", enabled);
-	WRITE("On key", onKey);
-	WRITE("Key", key);
-	WRITE("Key mode", keyMode);
-	WRITE("Silent", slient);
-	WRITE("Friendly fire", friendlyFire);
-	WRITE("Min damage", WallDamage);
-	WRITE("Hit Chance", hitChance);
-	WRITE("Auto Stop", autoStop);
-	WRITE("Head", BonesBools[0]);
-	WRITE("Neck", BonesBools[1]);
-	WRITE("Upper Chest", BonesBools[2]);
-	WRITE("Body", BonesBools[3]);
-	WRITE("Pelvis", BonesBools[4]);
-	WRITE("Hands", BonesBools[5]);
-	WRITE("Thigh & Calf", BonesBools[6]);
-	WRITE("Feet", BonesBools[7]);
-	WRITE("Between shots", betweenShots);
-	WRITE("Point Chance", pointChance);
-	WRITE("Body Chance", bodyChance);
 }
 
 static void to_json(json& j, const Config::Triggerbot& o, const Config::Triggerbot& dummy = {})
@@ -1009,9 +935,7 @@ static void to_json(json& j, const Config::Misc& o)
     WRITE("Kill sound", killSound);
     WRITE("Custom Kill Sound", customKillSound);
     WRITE("Purchase List", purchaseList);
-    WRITE("Draw Inaccuracy", drawInaccuracy);
-    WRITE("Draw InaccuracyThickness", drawInaccuracyThickness);
-    WRITE("Status Bar",Sbar);
+    WRITE("Opposite Hand Knife", oppositeHandKnife);
 }
 
 static void to_json(json& j, const Config::Visuals::ColorCorrection& o, const Config::Visuals::ColorCorrection& dummy)
@@ -1066,7 +990,6 @@ static void to_json(json& j, const Config::Visuals& o)
     WRITE("Hit marker time", hitMarkerTime);
     WRITE("Playermodel T", playerModelT);
     WRITE("Playermodel CT", playerModelCT);
-    WRITE("Night Mode", nightMode);
     WRITE("Color correction", colorCorrection);
 }
 
@@ -1146,7 +1069,6 @@ void Config::save(size_t id) const noexcept
         json j;
 
         j["Aimbot"] = aimbot;
-        j["Ragebot"] = ragebot;
         j["Triggerbot"] = triggerbot;
         j["Backtrack"] = backtrack;
         j["Anti aim"] = antiAim;
@@ -1190,7 +1112,6 @@ void Config::rename(size_t item, const char* newName) noexcept
 void Config::reset() noexcept
 {
     aimbot = { };
-    ragebot = { };
     triggerbot = { };
     backtrack = { };
     glow = { };

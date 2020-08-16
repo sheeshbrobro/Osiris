@@ -16,6 +16,8 @@
 
 #include <array>
 
+#include "../SDK/Beams.h"
+
 void Visuals::playerModel(FrameStage stage) noexcept
 {
     if (stage != FrameStage::RENDER_START && stage != FrameStage::RENDER_END)
@@ -397,7 +399,7 @@ void Visuals::skybox(FrameStage stage) noexcept
     if (stage != FrameStage::RENDER_START && stage != FrameStage::RENDER_END)
         return;
 
-    constexpr std::array skyboxes{ "cs_baggage_skybox_", "cs_tibet", "embassy", "italy", "jungle", "nukeblank", "office", "sky_cs15_daylight01_hdr", "sky_cs15_daylight02_hdr", "sky_cs15_daylight03_hdr", "sky_cs15_daylight04_hdr", "sky_csgo_cloudy01", "sky_csgo_night_flat", "sky_csgo_night02", "sky_day02_05_hdr", "sky_day02_05", "sky_dust", "sky_l4d_rural02_ldr", "sky_venice", "vertigo_hdr", "vertigo", "vertigoblue_hdr", "vietnam", "sky_lunacy" };
+    constexpr std::array skyboxes{ "cs_baggage_skybox_", "cs_tibet", "embassy", "italy", "jungle", "nukeblank", "office", "sky_cs15_daylight01_hdr", "sky_cs15_daylight02_hdr", "sky_cs15_daylight03_hdr", "sky_cs15_daylight04_hdr", "sky_csgo_cloudy01", "sky_csgo_night_flat", "sky_csgo_night02", "sky_day02_05_hdr", "sky_day02_05", "sky_dust", "sky_l4d_rural02_ldr", "sky_venice", "vertigo_hdr", "vertigo", "vertigoblue_hdr", "vietnam" };
 
     if (stage == FrameStage::RENDER_START && static_cast<std::size_t>(config->visuals.skybox - 1) < skyboxes.size()) {
         memory->loadSky(skyboxes[config->visuals.skybox - 1]);
@@ -436,15 +438,14 @@ void Visuals::NightMode()noexcept
 			if (strstr(pMaterial->getTextureGroupName(), "World") || strstr(pMaterial->getTextureGroupName(), "StaticProp"))
 			{
 				if (config->visuals.nightMode) {
-					memory->loadSky("sky_csgo_night02");
 
 					if (strstr(pMaterial->getTextureGroupName(), "StaticProp"))
-						pMaterial->colorModulate(0.11f, 0.11f, 0.11f);
+						pMaterial->colorModulate(2.0f, 1.078f, 1.576f);
 					else
-						pMaterial->colorModulate(0.05f, 0.05f, 0.05f);
+						pMaterial->colorModulate(1.859f, 1.082f, 1.521f);
 				}
 				else {
-					memory->loadSky("sky_cs15_daylight04_hdr");
+
 					pMaterial->colorModulate(1.0f, 1.0f, 1.0f);
 				}
 			}
@@ -452,4 +453,179 @@ void Visuals::NightMode()noexcept
 		OldNightmode = config->visuals.nightMode;
 	}
 
+}
+
+int GetBlendedColor(int percentage)
+{
+    if (percentage < 50)
+        return std::round(percentage * 2.55);
+    else
+        return 255;
+}
+
+void Visuals::indicators() noexcept
+{
+    if (config->visuals.indicatorsEnabled && interfaces->engine->isConnected() && interfaces->engine->isInGame())
+    {
+        if (localPlayer->isAlive())
+        {
+            const auto [width, height] = interfaces->surface->getScreenSize();
+
+            const auto x = width / 2;
+            const auto y = height / 2;
+
+            const int bottomLeft[2] = {
+                x - x,
+                y + y
+            };
+            const int upperLeft[2] = { // not actually needed, but left it here if anyone needs this code
+                x - x,
+                y - y
+            };
+            const int bottomRight[2] = { // not actually needed, but left it here if anyone needs this code
+                x + x,
+                y + y
+            };
+            const int upperRight[2] = { // not actually needed, but left it here if anyone needs this code
+                x + width,
+                y - height
+            };
+            const int screenSizeMultiplier[2] = {
+                2560 / width,
+                1440 / height
+            };
+
+            int desyncHeight = 0;
+            int fakeLagHeight = 0;
+            int LBYHeight = 0;
+            int FDHeight = 0;
+
+            float lbyDifference = 0;
+
+            float desyncAmount = localPlayer->getMaxDesyncAngle();
+
+            int desyncGreenPercentage;
+
+            if (desyncAmount < 0)
+                desyncGreenPercentage = (3.4483 * desyncAmount) / 2;
+            else
+                desyncGreenPercentage = ((3.4483 * desyncAmount) * -1) / 2;
+            int desyncRedPercentage = 100 - desyncGreenPercentage;
+
+            float lby = localPlayer->lby();
+
+            if (config->visuals.selectedIndicators[0])
+            {
+                LBYHeight += 25;
+                fakeLagHeight += 25;
+                FDHeight += 25;
+            }
+            if (config->visuals.selectedIndicators[1])
+            {
+
+                fakeLagHeight += 25;
+                FDHeight += 25;
+            }
+            if (config->visuals.selectedIndicators[2])
+            {
+                FDHeight += 25;
+            }
+
+            desyncAmount = std::round(desyncAmount) / 2;
+            lbyDifference = std::round(lbyDifference) / 2;
+
+            std::wstring desyncIndicator;
+            desyncIndicator = desyncIndicator + L"FAKE";
+
+            std::wstring LBYIndicator;
+            LBYIndicator = LBYIndicator + L"LBY";
+
+            std::wstring fakelagIndicator;
+            fakelagIndicator = fakelagIndicator + L"Choked: " + std::to_wstring(config->globals.chokedPackets);
+
+            std::wstring fakeduckIndicator;
+            fakeduckIndicator = fakeduckIndicator + L"FD";
+
+            if (config->visuals.selectedIndicators[0])
+            {
+                interfaces->surface->setTextFont(18); // desync indicator
+                interfaces->surface->setTextPosition(bottomLeft[0], bottomLeft[1] - (screenSizeMultiplier[1] * 75) - desyncHeight);
+                interfaces->surface->setTextColor(GetBlendedColor(desyncRedPercentage), GetBlendedColor(desyncGreenPercentage), 0, 255);
+                interfaces->surface->printText(desyncIndicator);
+            }
+
+            if (config->visuals.selectedIndicators[1])
+            {
+                interfaces->surface->setTextFont(18); // LBY indicator
+                interfaces->surface->setTextPosition(bottomLeft[0], bottomLeft[1] - (screenSizeMultiplier[1] * 75) - LBYHeight);
+                interfaces->surface->setTextColor(255, 0, 0, 255);
+                interfaces->surface->printText(LBYIndicator);
+            }
+
+            if (config->visuals.selectedIndicators[2])
+            {
+                interfaces->surface->setTextFont(18); // fakelag indicator
+                interfaces->surface->setTextPosition(bottomLeft[0], bottomLeft[1] - (screenSizeMultiplier[1] * 75) - fakeLagHeight);
+                interfaces->surface->setTextColor(0, 255, 0, 255);
+                interfaces->surface->printText(fakelagIndicator);
+            }
+
+            if (config->visuals.selectedIndicators[3])
+            {
+                interfaces->surface->setTextFont(18); // fakeduck indicator
+                interfaces->surface->setTextPosition(bottomLeft[0], bottomLeft[1] - (screenSizeMultiplier[1] * 75) - FDHeight);
+                if (config->misc.fakeDucking)
+                    interfaces->surface->setTextColor(0, 255, 0, 255);
+                else
+                    interfaces->surface->setTextColor(255, 0, 0, 255);
+                interfaces->surface->printText(fakeduckIndicator);
+            }
+        }
+    }
+}
+
+
+void Visuals::bulletBeams(GameEvent* event) noexcept
+{
+   if (!config->visuals.bulletTracers.enabled || !interfaces->engine->isInGame() || !interfaces->engine->isConnected() || memory->renderBeams == nullptr)
+        return;
+
+    const auto player = interfaces->entityList->getEntity(interfaces->engine->getPlayerForUserID(event->getInt("userid")));
+
+    if (!player || !localPlayer)
+        return;
+
+    Vector position;
+    position.x = event->getFloat("x");
+    position.y = event->getFloat("y");
+    position.z = event->getFloat("z");
+
+    BeamInfo_t beam_info;
+    beam_info.m_nType = TE_BEAMPOINTS;
+    beam_info.m_pszModelName = "sprites/physbeam.vmt";
+    beam_info.m_nModelIndex = -1;
+    beam_info.m_flHaloScale = 0.f;
+    beam_info.m_flLife = 4.f;
+    beam_info.m_flWidth = 1.f;
+    beam_info.m_flEndWidth = 1.f;
+    beam_info.m_flFadeLength = 0.1f;
+    beam_info.m_flAmplitude = 2.f;
+    beam_info.m_flBrightness = 255.f;
+    beam_info.m_flSpeed = 0.2f;
+    beam_info.m_nStartFrame = 0;
+    beam_info.m_flFrameRate = 0.f;
+    beam_info.m_flRed = config->visuals.bulletTracers.color[0] * 255;
+    beam_info.m_flGreen = config->visuals.bulletTracers.color[1] * 255;
+    beam_info.m_flBlue = config->visuals.bulletTracers.color[2] * 255;
+    beam_info.m_nSegments = 2;
+    beam_info.m_bRenderable = true;
+    beam_info.m_nFlags = FBEAM_ONLYNOISEONCE | FBEAM_NOTILE | FBEAM_HALOBEAM;
+
+    // create beam backwards because it looks nicer.
+    beam_info.m_vecStart = position;
+    beam_info.m_vecEnd = player->getBonePosition(38);
+
+    auto beam = memory->renderBeams->CreateBeamPoints(beam_info);
+    if (beam)
+        memory->renderBeams->DrawBeam(beam);
 }

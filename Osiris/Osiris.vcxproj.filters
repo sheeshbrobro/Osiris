@@ -170,6 +170,15 @@
     <ClCompile Include="Hacks\AutoWall.cpp">
       <Filter>Hacks</Filter>
     </ClCompile>
+    <ClCompile Include="Hacks\Animations.cpp">
+      <Filter>Hacks</Filter>
+    </ClCompile>
+    <ClCompile Include="Pattern.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extraHooks.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="GUI.h">
@@ -480,6 +489,21 @@
     </ClInclude>
     <ClInclude Include="SDK\Math.h">
       <Filter>SDK</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\Beams.h">
+      <Filter>SDK</Filter>
+    </ClInclude>
+    <ClInclude Include="Hacks\Animations.h">
+      <Filter>Hacks</Filter>
+    </ClInclude>
+    <ClInclude Include="MemAlloc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Pattern.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="extraHooks.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

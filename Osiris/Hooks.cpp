@@ -48,6 +48,9 @@
 #include "SDK/StudioRender.h"
 #include "SDK/Surface.h"
 #include "SDK/UserCmd.h"
+#include "SDK/Beams.h"
+#include "extraHooks.h"
+#include "Hacks/Animations.h"
 
 static LRESULT __stdcall wndProc(HWND window, UINT msg, WPARAM wParam, LPARAM lParam) noexcept
 {
@@ -124,6 +127,29 @@ static HRESULT __stdcall reset(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* 
     return hooks->originalReset(device, params);
 }
 
+
+static int __fastcall SendDatagram(NetworkChannel* network, void* edx, void* datagram)
+{
+    auto original = hooks->networkChannel.getOriginal<int, 46, void*>( datagram);
+    if (!config->backtrack.fakeLatency || datagram || !interfaces->engine->isInGame() || !config->backtrack.enabled)
+    {
+        return original(network, datagram);
+    }
+    int instate = network->InReliableState;
+    int insequencenr = network->InSequenceNr;
+    int faketimeLimit = config->backtrack.timeLimit; if (faketimeLimit <= 200) { faketimeLimit = 0; } else { faketimeLimit -= 200; }
+    float delta = max(0.f, std::clamp(faketimeLimit / 1000.f, 0.f, Backtrack::cvars.maxUnlag->getFloat()) - network->getLatency(0));
+
+    Backtrack::AddLatencyToNetwork(network, delta);
+
+    int result = original(network, datagram);
+
+    network->InReliableState = instate;
+    network->InSequenceNr = insequencenr;
+
+    return result;
+}
+
 static bool __stdcall createMove(float inputSampleTime, UserCmd* cmd) noexcept
 {
     auto result = hooks->clientMode.callOriginal<bool, 24>(inputSampleTime, cmd);
@@ -157,6 +183,21 @@ static bool __stdcall createMove(float inputSampleTime, UserCmd* cmd) noexcept
     Misc::quickHealthshot(cmd);
     Misc::fixTabletSignal();
     Misc::slowwalk(cmd);
+    extraHook.init();
+
+
+     static void* oldPointer = nullptr;
+
+    auto network = interfaces->engine->getNetworkChannel();
+    if (oldPointer != network && network && localPlayer)
+    {
+        oldPointer = network;
+        Backtrack::UpdateIncomingSequences(true);
+        hooks->networkChannel.init(network);
+        hooks->networkChannel.hookAt(46, SendDatagram);
+    }
+    Backtrack::UpdateIncomingSequences();
+	
 
     EnginePrediction::run(cmd);
 
@@ -167,11 +208,19 @@ static bool __stdcall createMove(float inputSampleTime, UserCmd* cmd) noexcept
     Misc::edgejump(cmd);
     Misc::moonwalk(cmd);
     Misc::fastPlant(cmd);
+	
+     config->globals.serverTime = memory->globalVars->serverTime();
+    config->globals.chokedPackets = interfaces->engine->getNetworkChannel()->chokedPackets;
+    config->globals.tickRate = memory->globalVars->intervalPerTick;
 
-    if (!(cmd->buttons & (UserCmd::IN_ATTACK | UserCmd::IN_ATTACK2))) {
-        Misc::chokePackets(sendPacket);
-        AntiAim::run(cmd, previousViewAngles, currentViewAngles, sendPacket);
-    }
+    if (!(cmd->buttons & (UserCmd::IN_ATTACK | UserCmd::IN_ATTACK2)) || config->misc.fakeLagSelectedFlags[0])
+        if (config->misc.fakeLagKey == 0 || GetAsyncKeyState(config->misc.fakeLagKey))
+            Misc::chokePackets(sendPacket, cmd);
+
+    Misc::fakeDuck(cmd, sendPacket);
+
+	 AntiAim::fakeWalk(cmd, sendPacket);
+    AntiAim::run(cmd, previousViewAngles, currentViewAngles, sendPacket);
 
     auto viewAnglesDelta{ cmd->viewangles - previousViewAngles };
     viewAnglesDelta.normalize();
@@ -184,6 +233,12 @@ static bool __stdcall createMove(float inputSampleTime, UserCmd* cmd) noexcept
     Misc::fixMovement(cmd, currentViewAngles.y);
 
     cmd->viewangles.x = std::clamp(cmd->viewangles.x, -89.0f, 89.0f);
+	    if (cmd->viewangles.y > 180.0f)
+        cmd->viewangles.y = 180.0f - cmd->viewangles.y;
+    else if (cmd->viewangles.y < -180.0f)
+        cmd->viewangles.y = -180.0f + cmd->viewangles.y;
+
+	
     cmd->viewangles.y = std::clamp(cmd->viewangles.y, -180.0f, 180.0f);
     cmd->viewangles.z = 0.0f;
     cmd->forwardmove = std::clamp(cmd->forwardmove, -450.0f, 450.0f);
@@ -192,8 +247,23 @@ static bool __stdcall createMove(float inputSampleTime, UserCmd* cmd) noexcept
     previousViewAngles = cmd->viewangles;
 
 
-    if (sendPacket) //because of sendpacket == true --- return real angles
-        config->globalvars.viewangles = cmd->viewangles;
+	if (sendPacket)
+    {
+        config->globals.fakeAngle = cmd->viewangles;
+        config->globals.cmdAngle = cmd->viewangles;
+        config->globals.thirdPersonAnglesSet = true;
+    }
+    else
+    {
+        config->globals.realAngle = cmd->viewangles;
+        config->globals.cmdAngle = cmd->viewangles;
+        config->globals.thirdPersonAnglesSet = true;
+    }
+
+	  config->globals.sendPacket = sendPacket;
+
+    Animations::update(cmd, sendPacket);
+    Animations::fake();
 
     return false;
 }
@@ -206,6 +276,7 @@ static int __stdcall doPostScreenEffects(int param) noexcept
         Visuals::reduceFlashEffect();
         Visuals::updateBrightness();
         Visuals::remove3dSky();
+    	Visuals::thirdperson();
         Glow::render();
     }
     return hooks->clientMode.callOriginal<int, 44>(param);
@@ -250,6 +321,7 @@ static void __stdcall paintTraverse(unsigned int panel, bool forceRepaint, bool 
         Misc::drawBombTimer();
         Misc::watermark();
         Visuals::hitMarker();
+    	Visuals::indicators();
     }
     hooks->panel.callOriginal<void, 41>(panel, forceRepaint, allowForce);
 }
@@ -268,12 +340,12 @@ static void __stdcall frameStageNotify(FrameStage stage) noexcept
         Misc::disablePanoramablur();
         Visuals::colorWorld();
         Misc::fakePrime();
+    	Animations::real();
         Visuals::NightMode();
     }
     if (interfaces->engine->isInGame()) {
         Visuals::skybox(stage);
         Visuals::removeBlur(stage);
-        Misc::oppositeHandKnife(stage);
         Visuals::removeGrass(stage);
         Visuals::modifySmoke(stage);
         Visuals::playerModel(stage);
@@ -376,11 +448,49 @@ static void __stdcall setDrawColor(int r, int g, int b, int a) noexcept
     hooks->surface.callOriginal<void, 15>(r, g, b, a);
 }
 
+static bool __stdcall fireEventClientSide(GameEvent* event) noexcept
+{
+    if (event) {
+        switch (fnv::hashRuntime(event->getName())) {
+	        case fnv::hash("bullet_impact"):
+	            Visuals::bulletBeams(event);
+	            break;
+            default: break;
+        }
+    }
+    return hooks->gameEventManager.callOriginal<bool, 9>(event);
+}
+
 struct ViewSetup {
-    std::byte pad[176];
+    char _0x0000[16];
+    __int32 x;
+    __int32 x_old;
+    __int32 y;
+    __int32 y_old;
+    __int32 width;
+    __int32    width_old;
+    __int32 height;
+    __int32    height_old;
+    char _0x0030[128];
     float fov;
-    std::byte pad1[32];
+    float fovViewmodel;
+    Vector origin;
+    Vector angles;
+    float zNear;
     float farZ;
+    float zNearViewmodel;
+    float zFarViewmodel;
+    float m_flAspectRatio;
+    float m_flNearBlurDepth;
+    float m_flNearFocusDepth;
+    float m_flFarFocusDepth;
+    float m_flFarBlurDepth;
+    float m_flNearBlurRadius;
+    float m_flFarBlurRadius;
+    float m_nDoFQuality;
+    __int32 m_nMotionBlurMode;
+    char _0x0104[68];
+    __int32 m_EdgeBlur;
 };
 
 static void __stdcall overrideView(ViewSetup* setup) noexcept
@@ -388,6 +498,8 @@ static void __stdcall overrideView(ViewSetup* setup) noexcept
     if (localPlayer && !localPlayer->isScoped())
         setup->fov += config->visuals.fov;
     setup->farZ += config->visuals.farZ * 10;
+	 if (config->misc.fakeDucking)
+        setup->origin.z = localPlayer->getAbsOrigin().z + 64.f;
     hooks->clientMode.callOriginal<void, 18>(setup);
 }
 
@@ -565,6 +677,7 @@ void Hooks::install() noexcept
     surface.init(interfaces->surface);
     svCheats.init(interfaces->cvar->findVar("sv_cheats"));
     viewRender.init(memory->viewRender);
+	gameEventManager.init(interfaces->gameEventManager);
 
     bspQuery.hookAt(6, listLeavesInBox);
     client.hookAt(37, frameStageNotify);
@@ -578,6 +691,7 @@ void Hooks::install() noexcept
     engine.hookAt(82, isPlayingDemo);
     engine.hookAt(101, getScreenAspectRatio);
     engine.hookAt(218, getDemoPlaybackParameters);
+    gameEventManager.hookAt(9, fireEventClientSide);
     modelRender.hookAt(21, drawModelExecute);
     panel.hookAt(41, paintTraverse);
     sound.hookAt(5, emitSound);
@@ -626,13 +740,16 @@ void Hooks::uninstall() noexcept
     client.restore();
     clientMode.restore();
     engine.restore();
+	gameEventManager.restore();
     modelRender.restore();
     panel.restore();
     sound.restore();
     surface.restore();
     svCheats.restore();
     viewRender.restore();
-
+    networkChannel.restore();
+    extraHook.restore();
+	
     netvars->restore();
 
     Glow::clearCustomObjects();
